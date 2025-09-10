@@ -39,11 +39,14 @@
               pkgs.rust-bin.stable."1.88.0".minimal
               pkgs.alsa-lib
               pkgs.libudev-zero
-              pkgs.wayland
               pkgs.libxkbcommon
+
+              # pkgs.wayland  # wayland
+              pkgs.vulkan-loader pkgs.vulkan-tools pkgs.xorg.libX11 pkgs.xorg.libXcursor pkgs.xorg.libXi pkgs.xorg.libXrandr # X11
             ];
             inherit nativeBuildInputs;
-            DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1;
+            # DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1;
+            WINIT_UNIX_BACKEND = "x11";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
           });
         };

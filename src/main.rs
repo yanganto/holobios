@@ -14,10 +14,11 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(FixedUpdate, controls)
-        .add_systems(
-            PostUpdate,
-            draw_cursor.after(TransformSystem::TransformPropagate),
-        )
+        // TODO cursor seg fault
+        // .add_systems(
+        //     PostUpdate,
+        //     draw_cursor.after(TransformSystem::TransformPropagate),
+        // )
         .run();
 }
 
