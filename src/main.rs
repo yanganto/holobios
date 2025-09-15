@@ -1,191 +1,73 @@
 //! This example demonstrates how to use the `Camera::viewport_to_world_2d` method with a dynamic viewport and camera.
-use bevy::{
-    color::palettes::{
-        basic::WHITE,
-        css::{GREEN, RED},
-    },
-    math::ops::powf,
-    prelude::*,
-    render::camera::Viewport,
-};
+use bevy::prelude::*;
+
+const MOVE_SPEED: f32 = 500.0;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, controls)
-        // TODO cursor seg fault
-        // .add_systems(
-        //     PostUpdate,
-        //     draw_cursor.after(TransformSystem::TransformPropagate),
-        // )
+        .add_systems(FixedUpdate, puzzle_control)
         .run();
 }
 
-fn draw_cursor(
-    camera_query: Single<(&Camera, &GlobalTransform)>,
-    window: Query<&Window>,
-    mut gizmos: Gizmos,
+fn puzzle_control(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut puzzle_query: Query<&mut Transform, With<Puzzle>>,
+    time: Res<Time>,
 ) {
-    let (camera, camera_transform) = *camera_query;
-    let Ok(window) = window.single() else {
-        return;
-    };
+    if let Ok(mut transform) = puzzle_query.single_mut() {
+        let mut direction = Vec3::ZERO;
 
-    let Some(cursor_position) = window.cursor_position() else {
-        return;
-    };
-
-    // Calculate a world position based on the cursor's position.
-    let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
-        return;
-    };
-
-    // To test Camera::world_to_viewport, convert result back to viewport space and then back to world space.
-    let Ok(viewport_check) = camera.world_to_viewport(camera_transform, world_pos.extend(0.0))
-    else {
-        return;
-    };
-    let Ok(world_check) = camera.viewport_to_world_2d(camera_transform, viewport_check.xy()) else {
-        return;
-    };
-
-    gizmos.circle_2d(world_pos, 10., WHITE);
-    // Should be the same as world_pos
-    gizmos.circle_2d(world_check, 8., RED);
-}
-
-fn controls(
-    mut camera_query: Query<(&mut Camera, &mut Transform, &mut Projection)>,
-    window: Query<&Window>,
-    input: Res<ButtonInput<KeyCode>>,
-    time: Res<Time<Fixed>>,
-) {
-    let Ok(window) = window.single() else {
-        return;
-    };
-    let Ok((mut camera, mut transform, mut projection)) = camera_query.single_mut() else {
-        return;
-    };
-    let fspeed = 600.0 * time.delta_secs();
-    let uspeed = fspeed as u32;
-    let window_size = window.resolution.physical_size();
-
-    // Camera movement controls
-    if input.pressed(KeyCode::ArrowUp) {
-        transform.translation.y += fspeed;
-    }
-    if input.pressed(KeyCode::ArrowDown) {
-        transform.translation.y -= fspeed;
-    }
-    if input.pressed(KeyCode::ArrowLeft) {
-        transform.translation.x -= fspeed;
-    }
-    if input.pressed(KeyCode::ArrowRight) {
-        transform.translation.x += fspeed;
-    }
-
-    // Camera zoom controls
-    if let Projection::Orthographic(projection2d) = &mut *projection {
-        if input.pressed(KeyCode::Comma) {
-            projection2d.scale *= powf(4.0f32, time.delta_secs());
+        if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
+            direction += Vec3::new(-1.0, 0.0, 0.0);
+        }
+        if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD) {
+            direction += Vec3::new(1.0, 0.0, 0.0);
+        }
+        if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
+            direction += Vec3::new(0.0, 1.0, 0.0);
+        }
+        if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
+            direction += Vec3::new(0.0, -1.0, 0.0);
         }
 
-        if input.pressed(KeyCode::Period) {
-            projection2d.scale *= powf(0.25f32, time.delta_secs());
-        }
-    }
-
-    if let Some(viewport) = camera.viewport.as_mut() {
-        // Viewport movement controls
-        if input.pressed(KeyCode::KeyW) {
-            viewport.physical_position.y = viewport.physical_position.y.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyS) {
-            viewport.physical_position.y += uspeed;
-        }
-        if input.pressed(KeyCode::KeyA) {
-            viewport.physical_position.x = viewport.physical_position.x.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyD) {
-            viewport.physical_position.x += uspeed;
+        if direction.length() > 0.0 {
+            direction = direction.normalize();
         }
 
-        // Bound viewport position so it doesn't go off-screen
-        viewport.physical_position = viewport
-            .physical_position
-            .min(window_size - viewport.physical_size);
-
-        // Viewport size controls
-        if input.pressed(KeyCode::KeyI) {
-            viewport.physical_size.y = viewport.physical_size.y.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyK) {
-            viewport.physical_size.y += uspeed;
-        }
-        if input.pressed(KeyCode::KeyJ) {
-            viewport.physical_size.x = viewport.physical_size.x.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyL) {
-            viewport.physical_size.x += uspeed;
-        }
-
-        // Bound viewport size so it doesn't go off-screen
-        viewport.physical_size = viewport
-            .physical_size
-            .min(window_size - viewport.physical_position)
-            .max(UVec2::new(20, 20));
+        transform.translation += direction * MOVE_SPEED * time.delta_secs();
     }
 }
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    window: Single<&Window>,
-) {
+#[derive(Component)]
+struct Puzzle {}
+
+fn setup(mut commands: Commands, window: Single<&Window>, asset_server: Res<AssetServer>) {
     let window_size = window.resolution.physical_size().as_vec2();
+    println!("window size: {}", window_size);
 
-    // Initialize centered, non-window-filling viewport
+    commands.spawn(Camera2d);
     commands.spawn((
-        Camera2d,
-        Camera {
-            viewport: Some(Viewport {
-                physical_position: (window_size * 0.125).as_uvec2(),
-                physical_size: (window_size * 0.75).as_uvec2(),
-                ..default()
-            }),
-            ..default()
-        },
+        Sprite::from_image(asset_server.load("block_07.png")),
+        Transform::from_xyz(0., 0., 0.),
+        Puzzle {},
     ));
 
     // Create a minimal UI explaining how to interact with the example
-    commands.spawn((
-        Text::new(
-            "Move the mouse to see the circle follow your cursor.\n\
-                    Use the arrow keys to move the camera.\n\
-                    Use the comma and period keys to zoom in and out.\n\
-                    Use the WASD keys to move the viewport.\n\
-                    Use the IJKL keys to resize the viewport.",
-        ),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(12.0),
-            left: Val::Px(12.0),
-            ..default()
-        },
-    ));
-
-    // Add mesh to make camera movement visible
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(40.0, 20.0))),
-        MeshMaterial2d(materials.add(Color::from(GREEN))),
-    ));
-
-    // Add background to visualize viewport bounds
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(50000.0, 50000.0))),
-        MeshMaterial2d(materials.add(Color::linear_rgb(0.01, 0.01, 0.01))),
-        Transform::from_translation(Vec3::new(0.0, 0.0, -200.0)),
-    ));
+    // commands.spawn((
+    //     Text::new(
+    //         "Move the mouse to see the circle follow your cursor.\n\
+    //                 Use the arrow keys to move the camera.\n\
+    //                 Use the comma and period keys to zoom in and out.\n\
+    //                 Use the WASD keys to move the viewport.\n\
+    //                 Use the IJKL keys to resize the viewport.",
+    //     ),
+    //     Node {
+    //         position_type: PositionType::Absolute,
+    //         top: Val::Px(12.0),
+    //         left: Val::Px(12.0),
+    //         ..default()
+    //     },
+    // ));
 }
