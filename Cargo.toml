@@ -12,6 +12,3 @@ features = [
     # "bevy_sprite", # Only 2D not 3D
     # "bevy_camera",
 ] 
-
-# [dependencies.bevy_render]
-# version = "0.16.0"
