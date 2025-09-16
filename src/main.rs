@@ -1,6 +1,5 @@
 use bevy::prelude::*;
-
-const MOVE_SPEED: f32 = 64.0; // Image size
+const IMAGE_SIZE: f32 = 64.0; // Image size
 
 fn main() {
     App::new()
@@ -63,6 +62,7 @@ fn puzzle_control(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut puzzle_query: Query<(&mut Transform, &mut Puzzle)>,
     asset_server: Res<AssetServer>,
+    window: Single<&Window>,
 ) {
     if let Ok((mut transform, mut puzzle)) = puzzle_query.single_mut() {
         let mut direction = Vec3::ZERO;
@@ -71,8 +71,7 @@ fn puzzle_control(
             let place = transform.translation;
             commands.spawn((
                 Sprite::from_image(asset_server.load("block_07.png")),
-                Transform::from_xyz(place.x, place.y, place.z)
-                    .with_rotation(puzzle.rotation.angle()),
+                Transform::from_xyz(place.x, place.y, 0.0).with_rotation(puzzle.rotation.angle()),
                 PlacedPuzzle {
                     rotation: puzzle.rotation.clone(),
                 },
@@ -83,6 +82,7 @@ fn puzzle_control(
             let quat = puzzle.rotation.rotate();
             *transform = transform.with_rotation(quat);
         }
+        let mut x_movement = true;
 
         if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
             direction += Vec3::new(-1.0, 0.0, 0.0);
@@ -92,16 +92,30 @@ fn puzzle_control(
         }
         if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
             direction += Vec3::new(0.0, 1.0, 0.0);
+            x_movement = false;
         }
         if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
             direction += Vec3::new(0.0, -1.0, 0.0);
+            x_movement = false;
         }
 
         if direction.length() > 0.0 {
             direction = direction.normalize();
         }
-
-        transform.translation += direction * MOVE_SPEED;
+        let window = window.resolution.physical_size().as_vec2();
+        let new_pos = transform.translation + direction * IMAGE_SIZE;
+        let half_image_size = IMAGE_SIZE / 2.0;
+        let half_window_width = window.x / 2.0;
+        let half_window_height = window.y / 2.0;
+        if (x_movement
+            && new_pos.x >= half_image_size - half_window_width
+            && new_pos.x <= half_window_width - half_image_size)
+            || (!x_movement
+                && new_pos.y >= half_image_size - half_window_height
+                && new_pos.y <= half_window_height - half_image_size)
+        {
+            transform.translation = new_pos;
+        }
     }
 }
 
@@ -112,7 +126,7 @@ fn setup(mut commands: Commands, window: Single<&Window>, asset_server: Res<Asse
     commands.spawn(Camera2d);
     commands.spawn((
         Sprite::from_image(asset_server.load("block_07.png")),
-        Transform::from_xyz(0., 0., 0.),
+        Transform::from_xyz(0., 0., 1.),
         Puzzle::default(),
     ));
 
