@@ -11,13 +11,30 @@ fn main() {
         .run();
 }
 
+#[derive(Component)]
+struct Puzzle {}
+
+#[derive(Component)]
+struct PlacedPuzzle {}
+
 fn puzzle_control(
+    mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut puzzle_query: Query<&mut Transform, With<Puzzle>>,
     time: Res<Time>,
+    asset_server: Res<AssetServer>,
 ) {
     if let Ok(mut transform) = puzzle_query.single_mut() {
         let mut direction = Vec3::ZERO;
+
+        if keyboard_input.pressed(KeyCode::Enter) || keyboard_input.pressed(KeyCode::KeyC) {
+            let place = transform.translation;
+            commands.spawn((
+                Sprite::from_image(asset_server.load("block_07.png")),
+                Transform::from_xyz(place.x, place.y, place.z),
+                PlacedPuzzle {},
+            ));
+        }
 
         if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
             direction += Vec3::new(-1.0, 0.0, 0.0);
@@ -39,9 +56,6 @@ fn puzzle_control(
         transform.translation += direction * MOVE_SPEED * time.delta_secs();
     }
 }
-
-#[derive(Component)]
-struct Puzzle {}
 
 fn setup(mut commands: Commands, window: Single<&Window>, asset_server: Res<AssetServer>) {
     let window_size = window.resolution.physical_size().as_vec2();
