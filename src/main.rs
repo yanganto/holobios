@@ -1,191 +1,195 @@
-//! This example demonstrates how to use the `Camera::viewport_to_world_2d` method with a dynamic viewport and camera.
-use bevy::{
-    color::palettes::{
-        basic::WHITE,
-        css::{GREEN, RED},
-    },
-    math::ops::powf,
-    prelude::*,
-    render::camera::Viewport,
-};
+use bevy::prelude::*;
+const IMAGE_SIZE: f32 = 64.0; // Image size
+const PUZZLE_LAYER: f32 = 1.0;
+const SELECTOR_LAYER: f32 = 2.0;
+const SUI_BLUE: Color = Color::srgba_u8(77, 162, 255, 64);
+const ERROR_RED: Color = Color::srgba_u8(209, 145, 145, 128);
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, controls)
-        // TODO cursor seg fault
-        // .add_systems(
-        //     PostUpdate,
-        //     draw_cursor.after(TransformSystem::TransformPropagate),
-        // )
+        .add_systems(Update, puzzle_control)
+        .add_systems(Update, conflict_check)
         .run();
 }
 
-fn draw_cursor(
-    camera_query: Single<(&Camera, &GlobalTransform)>,
-    window: Query<&Window>,
-    mut gizmos: Gizmos,
-) {
-    let (camera, camera_transform) = *camera_query;
-    let Ok(window) = window.single() else {
-        return;
-    };
-
-    let Some(cursor_position) = window.cursor_position() else {
-        return;
-    };
-
-    // Calculate a world position based on the cursor's position.
-    let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
-        return;
-    };
-
-    // To test Camera::world_to_viewport, convert result back to viewport space and then back to world space.
-    let Ok(viewport_check) = camera.world_to_viewport(camera_transform, world_pos.extend(0.0))
-    else {
-        return;
-    };
-    let Ok(world_check) = camera.viewport_to_world_2d(camera_transform, viewport_check.xy()) else {
-        return;
-    };
-
-    gizmos.circle_2d(world_pos, 10., WHITE);
-    // Should be the same as world_pos
-    gizmos.circle_2d(world_check, 8., RED);
+#[derive(Clone, Default, Debug)]
+enum Rotation {
+    #[default]
+    Up,
+    Right,
+    Down,
+    Left,
 }
 
-fn controls(
-    mut camera_query: Query<(&mut Camera, &mut Transform, &mut Projection)>,
-    window: Query<&Window>,
-    input: Res<ButtonInput<KeyCode>>,
-    time: Res<Time<Fixed>>,
+impl Rotation {
+    fn rotate(&mut self) -> Quat {
+        match self {
+            Rotation::Up => {
+                *self = Rotation::Right;
+            }
+            Rotation::Right => {
+                *self = Rotation::Down;
+            }
+            Rotation::Down => {
+                *self = Rotation::Left;
+            }
+            Rotation::Left => {
+                *self = Rotation::Up;
+            }
+        }
+        self.angle()
+    }
+    fn angle(&self) -> Quat {
+        match self {
+            Rotation::Up => Quat::from_rotation_z(0.0 * std::f32::consts::PI),
+            Rotation::Right => Quat::from_rotation_z(0.5 * std::f32::consts::PI),
+            Rotation::Down => Quat::from_rotation_z(1.0 * std::f32::consts::PI),
+            Rotation::Left => Quat::from_rotation_z(-0.5 * std::f32::consts::PI),
+        }
+    }
+}
+
+#[derive(Component, Default, Clone)]
+struct Selector {
+    rotation: Rotation,
+    conflict: bool,
+}
+
+#[derive(Component)]
+struct Puzzle {
+    rotation: Rotation,
+}
+
+fn puzzle_control(
+    mut commands: Commands,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut cursor: Query<(&mut Transform, &mut Selector)>,
+    puzzle_query: Query<&Transform, (With<Puzzle>, Without<Selector>)>,
+    asset_server: Res<AssetServer>,
+    window: Single<&Window>,
 ) {
-    let Ok(window) = window.single() else {
-        return;
-    };
-    let Ok((mut camera, mut transform, mut projection)) = camera_query.single_mut() else {
-        return;
-    };
-    let fspeed = 600.0 * time.delta_secs();
-    let uspeed = fspeed as u32;
-    let window_size = window.resolution.physical_size();
+    if let Ok((mut transform, mut cursor)) = cursor.single_mut() {
+        let mut direction = Vec3::ZERO;
 
-    // Camera movement controls
-    if input.pressed(KeyCode::ArrowUp) {
-        transform.translation.y += fspeed;
+        if keyboard_input.pressed(KeyCode::Enter) || keyboard_input.pressed(KeyCode::KeyC) {
+            let place = transform.translation;
+            if cursor.conflict {
+                commands.spawn(AudioPlayer::new(asset_server.load("audio/error_008.ogg")));
+            } else {
+                let drop_sound = AudioPlayer::new(asset_server.load("audio/drop_003.ogg"));
+                commands.spawn((
+                    Sprite::from_image(asset_server.load("img/block_07.png")),
+                    Transform::from_xyz(place.x, place.y, PUZZLE_LAYER)
+                        .with_rotation(cursor.rotation.angle()),
+                    Puzzle {
+                        rotation: cursor.rotation.clone(),
+                    },
+                ));
+                commands.spawn(drop_sound);
+            }
+            wait_key_release(200);
+        }
+
+        if keyboard_input.pressed(KeyCode::KeyR) {
+            let quat = cursor.rotation.rotate();
+            *transform = transform.with_rotation(quat);
+            commands.spawn(AudioPlayer::new(
+                asset_server.load("audio/question_004.ogg"),
+            ));
+            wait_key_release(200);
+        }
+        let mut x_movement = true;
+
+        if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
+            direction += Vec3::new(-1.0, 0.0, 0.0);
+        }
+        if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD) {
+            direction += Vec3::new(1.0, 0.0, 0.0);
+        }
+        if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
+            direction += Vec3::new(0.0, 1.0, 0.0);
+            x_movement = false;
+        }
+        if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
+            direction += Vec3::new(0.0, -1.0, 0.0);
+            x_movement = false;
+        }
+
+        if direction.length() > 0.0 {
+            direction = direction.normalize();
+        }
+        let window = window.resolution.physical_size().as_vec2();
+        let new_pos = transform.translation + direction * IMAGE_SIZE;
+        let half_image_size = IMAGE_SIZE / 2.0;
+        let half_window_width = window.x / 2.0;
+        let half_window_height = window.y / 2.0;
+        if (x_movement
+            && new_pos.x >= half_image_size - half_window_width
+            && new_pos.x <= half_window_width - half_image_size)
+            || (!x_movement
+                && new_pos.y >= half_image_size - half_window_height
+                && new_pos.y <= half_window_height - half_image_size)
+        {
+            transform.translation = new_pos;
+            wait_key_release(100);
+        }
     }
-    if input.pressed(KeyCode::ArrowDown) {
-        transform.translation.y -= fspeed;
+}
+
+// Check there is puzzle under selector
+fn conflict_check(
+    mut commands: Commands,
+    mut cursor: Query<(
+        &mut Transform,
+        &mut MeshMaterial2d<ColorMaterial>,
+        &mut Selector,
+    )>,
+    puzzle_query: Query<&Transform, (With<Puzzle>, Without<Selector>)>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    if let Ok((mut transform, mut mesh_material, mut cursor)) = cursor.single_mut() {
+        let mut direction = Vec3::ZERO;
+        let mut conflict = false;
+        for t in puzzle_query.iter() {
+            if t.translation.x == transform.translation.x
+                && t.translation.y == transform.translation.y
+            {
+                conflict = true;
+                break;
+            }
+        }
+
+        let mutation = cursor.conflict != conflict;
+        cursor.conflict = conflict;
+
+        if mutation {
+            let color = if conflict { ERROR_RED } else { SUI_BLUE };
+            // TODO: there should be a better way for switch color
+            *mesh_material = MeshMaterial2d(materials.add(color));
+        }
     }
-    if input.pressed(KeyCode::ArrowLeft) {
-        transform.translation.x -= fspeed;
-    }
-    if input.pressed(KeyCode::ArrowRight) {
-        transform.translation.x += fspeed;
-    }
+}
 
-    // Camera zoom controls
-    if let Projection::Orthographic(projection2d) = &mut *projection {
-        if input.pressed(KeyCode::Comma) {
-            projection2d.scale *= powf(4.0f32, time.delta_secs());
-        }
-
-        if input.pressed(KeyCode::Period) {
-            projection2d.scale *= powf(0.25f32, time.delta_secs());
-        }
-    }
-
-    if let Some(viewport) = camera.viewport.as_mut() {
-        // Viewport movement controls
-        if input.pressed(KeyCode::KeyW) {
-            viewport.physical_position.y = viewport.physical_position.y.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyS) {
-            viewport.physical_position.y += uspeed;
-        }
-        if input.pressed(KeyCode::KeyA) {
-            viewport.physical_position.x = viewport.physical_position.x.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyD) {
-            viewport.physical_position.x += uspeed;
-        }
-
-        // Bound viewport position so it doesn't go off-screen
-        viewport.physical_position = viewport
-            .physical_position
-            .min(window_size - viewport.physical_size);
-
-        // Viewport size controls
-        if input.pressed(KeyCode::KeyI) {
-            viewport.physical_size.y = viewport.physical_size.y.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyK) {
-            viewport.physical_size.y += uspeed;
-        }
-        if input.pressed(KeyCode::KeyJ) {
-            viewport.physical_size.x = viewport.physical_size.x.saturating_sub(uspeed);
-        }
-        if input.pressed(KeyCode::KeyL) {
-            viewport.physical_size.x += uspeed;
-        }
-
-        // Bound viewport size so it doesn't go off-screen
-        viewport.physical_size = viewport
-            .physical_size
-            .min(window_size - viewport.physical_position)
-            .max(UVec2::new(20, 20));
-    }
+fn wait_key_release(ms: u64) {
+    std::thread::sleep(std::time::Duration::from_millis(ms));
 }
 
 fn setup(
     mut commands: Commands,
+    window: Single<&Window>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    window: Single<&Window>,
 ) {
     let window_size = window.resolution.physical_size().as_vec2();
+    println!("window size: {}", window_size);
 
-    // Initialize centered, non-window-filling viewport
+    commands.spawn(Camera2d);
     commands.spawn((
-        Camera2d,
-        Camera {
-            viewport: Some(Viewport {
-                physical_position: (window_size * 0.125).as_uvec2(),
-                physical_size: (window_size * 0.75).as_uvec2(),
-                ..default()
-            }),
-            ..default()
-        },
-    ));
-
-    // Create a minimal UI explaining how to interact with the example
-    commands.spawn((
-        Text::new(
-            "Move the mouse to see the circle follow your cursor.\n\
-                    Use the arrow keys to move the camera.\n\
-                    Use the comma and period keys to zoom in and out.\n\
-                    Use the WASD keys to move the viewport.\n\
-                    Use the IJKL keys to resize the viewport.",
-        ),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(12.0),
-            left: Val::Px(12.0),
-            ..default()
-        },
-    ));
-
-    // Add mesh to make camera movement visible
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(40.0, 20.0))),
-        MeshMaterial2d(materials.add(Color::from(GREEN))),
-    ));
-
-    // Add background to visualize viewport bounds
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(50000.0, 50000.0))),
-        MeshMaterial2d(materials.add(Color::linear_rgb(0.01, 0.01, 0.01))),
-        Transform::from_translation(Vec3::new(0.0, 0.0, -200.0)),
+        Mesh2d(meshes.add(Rectangle::new(IMAGE_SIZE, IMAGE_SIZE))),
+        MeshMaterial2d(materials.add(SUI_BLUE)),
+        Transform::from_xyz(0., 0., SELECTOR_LAYER),
+        Selector::default(),
     ));
 }
