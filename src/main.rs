@@ -20,7 +20,6 @@ enum Rotation {
 
 impl Rotation {
     fn rotate(&mut self) -> Quat {
-        let angle = self.angle();
         match self {
             Rotation::Up => {
                 *self = Rotation::Right;
@@ -35,7 +34,7 @@ impl Rotation {
                 *self = Rotation::Up;
             }
         }
-        angle
+        self.angle()
     }
     fn angle(&self) -> Quat {
         match self {
