@@ -5,7 +5,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, puzzle_control)
+        .add_systems(Update, puzzle_control)
         .run();
 }
 
@@ -60,6 +60,7 @@ fn puzzle_control(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut puzzle_query: Query<(&mut Transform, &mut Puzzle)>,
+    placed_puzzle_query: Query<&Transform, (With<PlacedPuzzle>, Without<Puzzle>)>,
     asset_server: Res<AssetServer>,
     window: Single<&Window>,
 ) {
@@ -68,13 +69,27 @@ fn puzzle_control(
 
         if keyboard_input.pressed(KeyCode::Enter) || keyboard_input.pressed(KeyCode::KeyC) {
             let place = transform.translation;
-            commands.spawn((
-                Sprite::from_image(asset_server.load("block_07.png")),
-                Transform::from_xyz(place.x, place.y, 0.0).with_rotation(puzzle.rotation.angle()),
-                PlacedPuzzle {
-                    rotation: puzzle.rotation.clone(),
-                },
-            ));
+            let mut conflict = false;
+            for t in placed_puzzle_query.iter() {
+                if t.translation.x == place.x && t.translation.y == place.y {
+                    conflict = true;
+                }
+            }
+            if conflict {
+                commands.spawn(AudioPlayer::new(asset_server.load("audio/error_008.ogg")));
+            } else {
+                let drop_sound = AudioPlayer::new(asset_server.load("audio/drop_003.ogg"));
+                commands.spawn((
+                    Sprite::from_image(asset_server.load("img/block_07.png")),
+                    Transform::from_xyz(place.x, place.y, 0.0)
+                        .with_rotation(puzzle.rotation.angle()),
+                    PlacedPuzzle {
+                        rotation: puzzle.rotation.clone(),
+                    },
+                ));
+                commands.spawn(drop_sound);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
 
         if keyboard_input.pressed(KeyCode::KeyR) {
@@ -124,7 +139,7 @@ fn setup(mut commands: Commands, window: Single<&Window>, asset_server: Res<Asse
 
     commands.spawn(Camera2d);
     commands.spawn((
-        Sprite::from_image(asset_server.load("block_07.png")),
+        Sprite::from_image(asset_server.load("img/block_07.png")),
         Transform::from_xyz(0., 0., 1.),
         Puzzle::default(),
     ));
