@@ -60,6 +60,7 @@ struct Selector {
 
 #[derive(Component)]
 struct Puzzle {
+    #[allow(dead_code)]
     rotation: Rotation,
 }
 
@@ -67,7 +68,6 @@ fn puzzle_control(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut cursor: Query<(&mut Transform, &mut Selector)>,
-    puzzle_query: Query<&Transform, (With<Puzzle>, Without<Selector>)>,
     asset_server: Res<AssetServer>,
     window: Single<&Window>,
 ) {
@@ -141,7 +141,6 @@ fn puzzle_control(
 
 // Check there is puzzle under selector
 fn conflict_check(
-    mut commands: Commands,
     mut cursor: Query<(
         &mut Transform,
         &mut MeshMaterial2d<ColorMaterial>,
@@ -150,8 +149,7 @@ fn conflict_check(
     puzzle_query: Query<&Transform, (With<Puzzle>, Without<Selector>)>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    if let Ok((mut transform, mut mesh_material, mut cursor)) = cursor.single_mut() {
-        let mut direction = Vec3::ZERO;
+    if let Ok((transform, mut mesh_material, mut cursor)) = cursor.single_mut() {
         let mut conflict = false;
         for t in puzzle_query.iter() {
             if t.translation.x == transform.translation.x
