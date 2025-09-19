@@ -1,195 +1,55 @@
 use bevy::prelude::*;
-const IMAGE_SIZE: f32 = 64.0; // Image size
-const PUZZLE_LAYER: f32 = 1.0;
-const SELECTOR_LAYER: f32 = 2.0;
-const SUI_BLUE: Color = Color::srgba_u8(77, 162, 255, 64);
-const ERROR_RED: Color = Color::srgba_u8(209, 145, 145, 128);
 
+mod game;
+
+// TODO use SubApp for Doc to save resource
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .init_state::<AppState>()
+        .add_plugins(game::GamePlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, puzzle_control)
-        .add_systems(Update, conflict_check)
+        .add_systems(Update, show_help.run_if(in_state(AppState::Help)))
+        .add_systems(Update, clear_help.run_if(in_state(AppState::Game)))
+        .add_systems(Update, transition_to_game_state)
         .run();
 }
 
-#[derive(Clone, Default, Debug)]
-enum Rotation {
-    #[default]
-    Up,
-    Right,
-    Down,
-    Left,
+fn setup(mut commands: Commands) {
+    commands.spawn(Text::new("Initializing...."));
 }
 
-impl Rotation {
-    fn rotate(&mut self) -> Quat {
-        match self {
-            Rotation::Up => {
-                *self = Rotation::Right;
-            }
-            Rotation::Right => {
-                *self = Rotation::Down;
-            }
-            Rotation::Down => {
-                *self = Rotation::Left;
-            }
-            Rotation::Left => {
-                *self = Rotation::Up;
-            }
-        }
-        self.angle()
-    }
-    fn angle(&self) -> Quat {
-        match self {
-            Rotation::Up => Quat::from_rotation_z(0.0 * std::f32::consts::PI),
-            Rotation::Right => Quat::from_rotation_z(0.5 * std::f32::consts::PI),
-            Rotation::Down => Quat::from_rotation_z(1.0 * std::f32::consts::PI),
-            Rotation::Left => Quat::from_rotation_z(-0.5 * std::f32::consts::PI),
-        }
-    }
+fn show_help(mut text: Single<&mut Text>) {
+    text.clear();
+    text.push_str(
+        "Use the arrow keys to move the selector.\n\
+        Use the C key to drop a puzzle.\n\
+        Use the R key to rotate a puzzle.\n\
+        Use the H key to show the doc.\n\
+        Use the Esc key to close the doc.\n\
+        ",
+    );
 }
 
-#[derive(Component, Default, Clone)]
-struct Selector {
-    rotation: Rotation,
-    conflict: bool,
+fn clear_help(mut commands: Commands, mut text: Single<&mut Text>) {
+    text.clear();
 }
 
-#[derive(Component)]
-struct Puzzle {
-    rotation: Rotation,
-}
-
-fn puzzle_control(
-    mut commands: Commands,
+pub fn transition_to_game_state(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut cursor: Query<(&mut Transform, &mut Selector)>,
-    puzzle_query: Query<&Transform, (With<Puzzle>, Without<Selector>)>,
-    asset_server: Res<AssetServer>,
-    window: Single<&Window>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
-    if let Ok((mut transform, mut cursor)) = cursor.single_mut() {
-        let mut direction = Vec3::ZERO;
-
-        if keyboard_input.pressed(KeyCode::Enter) || keyboard_input.pressed(KeyCode::KeyC) {
-            let place = transform.translation;
-            if cursor.conflict {
-                commands.spawn(AudioPlayer::new(asset_server.load("audio/error_008.ogg")));
-            } else {
-                let drop_sound = AudioPlayer::new(asset_server.load("audio/drop_003.ogg"));
-                commands.spawn((
-                    Sprite::from_image(asset_server.load("img/block_07.png")),
-                    Transform::from_xyz(place.x, place.y, PUZZLE_LAYER)
-                        .with_rotation(cursor.rotation.angle()),
-                    Puzzle {
-                        rotation: cursor.rotation.clone(),
-                    },
-                ));
-                commands.spawn(drop_sound);
-            }
-            wait_key_release(200);
-        }
-
-        if keyboard_input.pressed(KeyCode::KeyR) {
-            let quat = cursor.rotation.rotate();
-            *transform = transform.with_rotation(quat);
-            commands.spawn(AudioPlayer::new(
-                asset_server.load("audio/question_004.ogg"),
-            ));
-            wait_key_release(200);
-        }
-        let mut x_movement = true;
-
-        if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
-            direction += Vec3::new(-1.0, 0.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD) {
-            direction += Vec3::new(1.0, 0.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
-            direction += Vec3::new(0.0, 1.0, 0.0);
-            x_movement = false;
-        }
-        if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
-            direction += Vec3::new(0.0, -1.0, 0.0);
-            x_movement = false;
-        }
-
-        if direction.length() > 0.0 {
-            direction = direction.normalize();
-        }
-        let window = window.resolution.physical_size().as_vec2();
-        let new_pos = transform.translation + direction * IMAGE_SIZE;
-        let half_image_size = IMAGE_SIZE / 2.0;
-        let half_window_width = window.x / 2.0;
-        let half_window_height = window.y / 2.0;
-        if (x_movement
-            && new_pos.x >= half_image_size - half_window_width
-            && new_pos.x <= half_window_width - half_image_size)
-            || (!x_movement
-                && new_pos.y >= half_image_size - half_window_height
-                && new_pos.y <= half_window_height - half_image_size)
-        {
-            transform.translation = new_pos;
-            wait_key_release(100);
-        }
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        next_state.set(AppState::Game);
+    }
+    if keyboard_input.just_pressed(KeyCode::KeyH) {
+        next_state.set(AppState::Help);
     }
 }
 
-// Check there is puzzle under selector
-fn conflict_check(
-    mut commands: Commands,
-    mut cursor: Query<(
-        &mut Transform,
-        &mut MeshMaterial2d<ColorMaterial>,
-        &mut Selector,
-    )>,
-    puzzle_query: Query<&Transform, (With<Puzzle>, Without<Selector>)>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    if let Ok((mut transform, mut mesh_material, mut cursor)) = cursor.single_mut() {
-        let mut direction = Vec3::ZERO;
-        let mut conflict = false;
-        for t in puzzle_query.iter() {
-            if t.translation.x == transform.translation.x
-                && t.translation.y == transform.translation.y
-            {
-                conflict = true;
-                break;
-            }
-        }
-
-        let mutation = cursor.conflict != conflict;
-        cursor.conflict = conflict;
-
-        if mutation {
-            let color = if conflict { ERROR_RED } else { SUI_BLUE };
-            // TODO: there should be a better way for switch color
-            *mesh_material = MeshMaterial2d(materials.add(color));
-        }
-    }
-}
-
-fn wait_key_release(ms: u64) {
-    std::thread::sleep(std::time::Duration::from_millis(ms));
-}
-
-fn setup(
-    mut commands: Commands,
-    window: Single<&Window>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    let window_size = window.resolution.physical_size().as_vec2();
-    println!("window size: {}", window_size);
-
-    commands.spawn(Camera2d);
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(IMAGE_SIZE, IMAGE_SIZE))),
-        MeshMaterial2d(materials.add(SUI_BLUE)),
-        Transform::from_xyz(0., 0., SELECTOR_LAYER),
-        Selector::default(),
-    ));
+#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+pub enum AppState {
+    #[default]
+    Help,
+    Game,
 }
