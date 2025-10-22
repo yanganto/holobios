@@ -9,6 +9,8 @@ pub struct Selector {
     pub rotation: Rotation,
     pub conflict: bool,
     pub pos: Vec2,
+    /// store needed puzzle by puzzle_idx start form 0 to 2 * PUZZLE_LEVEL - 1
+    pub puzzles: Vec<u8>,
 }
 
 impl Selector {
@@ -44,17 +46,45 @@ impl Selector {
             let i_idx = i as f32 - PUZZLE_LEVEL as f32;
             for j in 1..(2 * PUZZLE_LEVEL) {
                 let j_idx = j as f32 - PUZZLE_LEVEL as f32;
-                out.push(
-                    Transform::from_xyz(
-                        self.pos.x + i_idx * IMAGE_SIZE,
-                        self.pos.y + j_idx * IMAGE_SIZE,
-                        PUZZLE_LAYER,
-                    )
-                    .with_rotation(self.rotation.angle()),
-                );
+
+                let puzzle_idx = (i - 1) * (2 * PUZZLE_LEVEL - 1) + j - 1;
+                if self.puzzles.contains(&puzzle_idx) {
+                    out.push(
+                        Transform::from_xyz(
+                            self.pos.x + i_idx * IMAGE_SIZE,
+                            self.pos.y + j_idx * IMAGE_SIZE,
+                            PUZZLE_LAYER,
+                        )
+                        .with_rotation(self.rotation.angle()),
+                    );
+                }
             }
         }
         out
+    }
+    pub fn rotate(&mut self) -> Quat {
+        let rotated_puzzles = self.puzzles.iter().map(rotate_by_id).collect();
+        self.puzzles = rotated_puzzles;
+        self.rotation.rotate()
+    }
+}
+
+fn rotate_by_id(i: &u8) -> u8 {
+    match PUZZLE_LEVEL {
+        2 => match i {
+            0 => 2,
+            1 => 5,
+            2 => 8,
+            3 => 1,
+            4 => 4,
+            5 => 7,
+            6 => 0,
+            7 => 3,
+            8 => 6,
+            _ => panic!("Error number in puzzles"),
+        },
+        1 => *i,
+        _ => panic!("Unsupported puzzle Level"),
     }
 }
 

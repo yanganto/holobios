@@ -43,7 +43,7 @@ fn puzzle_control(
         }
 
         if keyboard_input.pressed(KeyCode::KeyR) {
-            let quat = cursor.rotation.rotate();
+            let quat = cursor.rotate();
             *transform = transform.with_rotation(quat);
             commands.spawn(AudioPlayer::new(
                 asset_server.load("audio/question_004.ogg"),
@@ -135,6 +135,9 @@ fn setup(
         Mesh2d(meshes.add(Rectangle::new(Selector::width(), Selector::width()))),
         MeshMaterial2d(materials.add(SUI_BLUE)),
         Transform::from_xyz(0., 0., SELECTOR_LAYER),
-        Selector::default(),
+        Selector {
+            puzzles: vec![0, 1, 2, 3, 4],
+            ..Default::default()
+        },
     ));
 }
