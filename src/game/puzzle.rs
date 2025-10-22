@@ -63,13 +63,13 @@ impl Selector {
         out
     }
     pub fn rotate(&mut self) -> Quat {
-        let rotated_puzzles = self.puzzles.iter().map(idx_map).collect();
+        let rotated_puzzles = self.puzzles.iter().map(rotate_by_id).collect();
         self.puzzles = rotated_puzzles;
         self.rotation.rotate()
     }
 }
 
-fn idx_map(i: &u8) -> u8 {
+fn rotate_by_id(i: &u8) -> u8 {
     match PUZZLE_LEVEL {
         2 => match i {
             0 => 2,
