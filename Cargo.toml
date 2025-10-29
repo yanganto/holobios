@@ -8,8 +8,10 @@ rust-version = "1.85.1"
 version = "0.16.0"
 # default-features = false
 features = [
-    # "wayland",
     # "bevy_render", # GPU support (based on `wgpu`)
     # "bevy_sprite", # Only 2D not 3D
     # "bevy_camera",
 ] 
+
+[features]
+wayland = ["bevy/wayland"]
