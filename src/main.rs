@@ -9,7 +9,8 @@ fn main() {
         .add_plugins(
             DefaultPlugins.set(bevy::render::RenderPlugin {
                 render_creation: bevy::render::settings::WgpuSettings {
-                    power_preference: bevy::render::settings::PowerPreference::LowPower,
+                    // Use intrgrated GPU
+                    // power_preference: bevy::render::settings::PowerPreference::LowPower,
                     ..Default::default()
                 }
                 .into(),
